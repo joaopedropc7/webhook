@@ -1,0 +1,19 @@
+{
+  "name": "axxon-webhook-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Proxy/forwarder de webhooks da Axxon Pay com painel administrativo",
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "build": "npm install --prefix frontend && npm run build --prefix frontend",
+    "start": "npm start --prefix backend",
+    "create-admin": "npm run create-admin --prefix backend",
+    "hash": "npm run hash --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
