@@ -404,7 +404,16 @@ O app aborta no boot com mensagem clara se faltar alguma variável obrigatória.
 
 ## 7. Diagnóstico
 
-`GET /health` é o primeiro lugar a olhar:
+Antes de qualquer deploy, rode:
+
+```bash
+npm run check
+```
+
+Ele valida as variáveis, confirma que a chave é mesmo a `service_role`, testa a conexão, verifica as tabelas
+e a função `body_text()` da migration, e lista os usuários cadastrados. Nenhum segredo é impresso.
+
+Com a aplicação no ar, `GET /health` é o primeiro lugar a olhar:
 
 | Resposta | Significado |
 |----------|-------------|
