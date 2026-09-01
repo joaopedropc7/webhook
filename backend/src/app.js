@@ -56,7 +56,13 @@ const BUILD_INFO = {
 
 function health(req, res) {
   if (config.missingEnv.length) {
-    return res.status(503).json({ ok: false, missingEnv: config.missingEnv, ...BUILD_INFO });
+    // Detalhe so no estado quebrado, e apenas NOMES de variaveis — nunca valores
+    return res.status(503).json({
+      ok: false,
+      missingEnv: config.missingEnv,
+      ...BUILD_INFO,
+      diagnostics: config.envDiagnostics,
+    });
   }
   if (config.warnings.length) {
     return res.status(200).json({ ok: true, warnings: config.warnings, ...BUILD_INFO });

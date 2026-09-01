@@ -4,15 +4,41 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
+const REQUIRED_KEYS = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET'];
+
+// Foto do ambiente ANTES de aplicar qualquer arquivo: e isso que revela se a
+// plataforma ja injetou as variaveis (com valor ou vazias).
+const envBefore = REQUIRED_KEYS.reduce((acc, key) => {
+  if (Object.prototype.hasOwnProperty.call(process.env, key)) {
+    acc[key] = process.env[key] === '' ? 'vazia' : 'definida';
+  }
+  return acc;
+}, {});
+
 const loadedEnvFiles = [];
 let bakedEnvLoaded = false;
+const bakedKeys = [];
+
+// Uma variavel definida como string vazia nao configura nada — tratamos como
+// ausente. (A Vercel pode declarar a variavel vazia; sem isto, o valor do
+// arquivo era descartado e a config ficava "faltando" mesmo com o .env lido.)
+function isUnset(key) {
+  const current = process.env[key];
+  return current === undefined || current === '';
+}
+
+const keysFromFiles = [];
+const keysFromBaked = [];
 
 // Aplica um .env sem sobrescrever o que ja existe: as variaveis cadastradas
 // no painel da Vercel/Render sempre vencem o arquivo.
 function applyEnvFile(contents, source) {
   const parsed = dotenv.parse(contents);
   for (const [key, value] of Object.entries(parsed)) {
-    if (process.env[key] === undefined) process.env[key] = value;
+    if (isUnset(key)) {
+      process.env[key] = value;
+      keysFromFiles.push(key);
+    }
   }
   loadedEnvFiles.push(source);
 }
@@ -34,7 +60,11 @@ try {
   // eslint-disable-next-line global-require
   const baked = require('./env.baked');
   for (const [key, value] of Object.entries(baked)) {
-    if (process.env[key] === undefined) process.env[key] = value;
+    bakedKeys.push(key);
+    if (isUnset(key)) {
+      process.env[key] = value;
+      keysFromBaked.push(key);
+    }
   }
   bakedEnvLoaded = true;
 } catch {
@@ -124,6 +154,13 @@ if (keyRole && keyRole !== 'service_role') {
 
 config.loadedEnvFiles = loadedEnvFiles;
 config.bakedEnvLoaded = bakedEnvLoaded;
+config.envDiagnostics = {
+  bakedKeys,        // chaves presentes no modulo embutido
+  keysFromBaked,    // chaves que o modulo realmente aplicou
+  keysFromFiles,    // chaves que os arquivos .env aplicaram
+  // como as obrigatorias chegaram do ambiente, antes de qualquer arquivo
+  envBefore,
+};
 config.missingEnv = missingEnv;
 config.supabaseKeyRole = keyRole;
 config.warnings = warnings;
