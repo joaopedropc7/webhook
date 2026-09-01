@@ -50,13 +50,13 @@ A `service_role key` existe **somente no backend**. O frontend nunca fala com o 
 │   │       ├── auth.js          # login / logout / me
 │   │       ├── logs.js          # listagem + detalhe (protegidas)
 │   │       └── settings.js      # troca de senha e de usuário
+│   ├── .env                     # configuração (fica aqui por causa do service root)
 │   └── scripts/
 │       ├── create-admin.js      # cria o admin (hash bcrypt)
 │       └── hash-password.js     # só gera o hash, para colar no SQL Editor
 ├── frontend/                    # React + Vite (login, painel, configurações)
-├── api/index.js                 # entrypoint serverless da Vercel (mesmo app Express)
 ├── migrations/001_init.sql      # schema do Supabase
-├── vercel.json                  # build + rewrites da Vercel
+├── vercel.json                  # services (frontend + backend) e rewrites da Vercel
 ├── ecosystem.config.js          # pm2
 ├── .env.example
 └── package.json                 # scripts do monorepo
@@ -89,8 +89,11 @@ npm run install:all
 ### 1.4 Criar o `.env`
 
 ```bash
-cp .env.example .env
+cp .env.example backend/.env
 ```
+
+> O `.env` mora em **`backend/`**, e não na raiz: é o `root` do serviço de backend na Vercel.
+> Um `.env` na raiz também é lido (compatibilidade), mas não é empacotado no deploy.
 
 Edite e preencha:
 
@@ -241,7 +244,7 @@ git clone <seu-repo> /var/www/axxon-proxy
 cd /var/www/axxon-proxy
 
 npm run install:all
-cp .env.example .env && nano .env        # preencha (COOKIE_SECURE pode ficar vazio)
+cp .env.example backend/.env && nano backend/.env   # COOKIE_SECURE pode ficar vazio
 npm run build
 
 npm run create-admin -- admin@lojaconfort.site 'SuaSenhaForte123'
@@ -293,60 +296,78 @@ git pull && npm run install:all && npm run build && pm2 restart axxon-webhook-pr
 Variáveis de ambiente no painel do serviço: `DEST_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `NODE_ENV=production` (o `COOKIE_SECURE` se resolve sozinho em produção).
 Não defina `PORT` manualmente — a plataforma injeta a dela.
 
-### Opção C — Vercel
+### Opção C — Vercel (Services)
 
-O repositório já traz [`vercel.json`](vercel.json) e [`api/index.js`](api/index.js), que é o que resolve o erro
-`vercel.json required to deploy projects with multiple services`: sem esse arquivo a Vercel encontra
-frontend e backend no mesmo repositório e não sabe o que construir.
+O repositório traz [`vercel.json`](vercel.json) no modelo **[Vercel Services](https://vercel.com/docs/services)**,
+que é o que resolve o erro `vercel.json required to deploy projects with multiple services`:
+frontend e backend são declarados como dois serviços do mesmo projeto, com roteamento compartilhado.
 
-Como fica: o painel React é publicado como estático (`frontend/dist`) e todas as rotas dinâmicas
-(`/api/*`, `/webhook/*`, `/health`) são reescritas para uma única serverless function que roda **o mesmo app Express**.
+```json
+{
+  "services": {
+    "frontend": { "root": "frontend", "framework": "vite", ... },
+    "backend":  { "root": "backend",  "framework": "express", "entrypoint": "src/server.js", ... }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)",     "destination": { "service": "backend" } },
+    { "source": "/webhook/(.*)", "destination": { "service": "backend" } },
+    { "source": "/health",       "destination": { "service": "backend" } },
+    { "source": "/(.*)",         "destination": { "service": "frontend" } }
+  ]
+}
+```
+
+Três detalhes que fazem esse arquivo funcionar:
+
+1. **`/webhook/(.*)` precisa estar nas rewrites.** Roteando só `/api`, o postback da Axxon cairia no
+   serviço de frontend e voltaria 404 — o endpoint mais importante da aplicação ficaria mudo.
+2. **Nada de `buildCommand`, `installCommand`, `outputDirectory`, `framework` ou `functions` no topo.**
+   Com `services` presente, essas chaves só valem dentro de cada serviço; no topo, o deploy é recusado.
+3. **A ordem das rewrites importa** — o catch-all `/(.*)` vai por último, senão engole tudo.
 
 Passos:
 
-1. **Import Project** na Vercel apontando para o repositório. Deixe o *Root Directory* como a raiz — o `vercel.json` cuida do resto.
-2. Nada a cadastrar no painel: o `.env` do repositório é lido em runtime (veja abaixo).
-   Ajuste no `.env` antes do deploy:
+1. **Import Project** na Vercel apontando para o repositório, com o *Root Directory* na raiz.
+2. Deploy.
+3. Cadastre `https://<seu-dominio>/webhook/axxon` como `postbackUrl` na Axxon.
 
-   ```env
-   FORWARD_TIMEOUT_MS=6000
-   FORWARD_MAX_RETRIES=1
-   ```
+Antes do deploy, ajuste no `backend/.env`:
 
-3. Deploy, e cadastre `https://<seu-dominio>/webhook/axxon` como `postbackUrl` na Axxon.
+```env
+FORWARD_TIMEOUT_MS=6000
+FORWARD_MAX_RETRIES=1
+```
+
+O reenvio é síncrono, e o pior caso é `(retries + 1) × timeout + backoff`. Com os padrões (10s / 2 retries)
+isso chega a **32s**, o que estoura o `maxDuration` e faz a Axxon receber um `504` em vez do status real do
+destino. Com `6000` / `1` o pior caso cai para ~12,5s.
 
 #### Como o `.env` é lido na Vercel
 
-A Vercel **não** injeta sozinha um `.env` do repositório nas variáveis de runtime — o que costuma acontecer
-em projetos Vite/Next é o bundler ler o `.env` em *build time* e embutir os valores no bundle, o que é outra coisa.
-Para uma serverless function, são necessários dois passos, ambos já configurados aqui:
+A Vercel **não** injeta sozinha um `.env` do repositório nas variáveis de runtime — o que acontece em projetos
+Vite/Next é o bundler ler o `.env` em *build time* e embutir os valores no bundle, o que é outra coisa.
+Aqui a leitura em runtime funciona por dois motivos:
 
-1. [`vercel.json`](vercel.json) declara `"includeFiles": ".env"` na function, o que empacota o arquivo junto do código.
-2. [`backend/src/config.js`](backend/src/config.js) procura o `.env` na raiz do projeto, em `backend/` e no `cwd`
-   (que na Vercel é a raiz do bundle), carregando o primeiro que existir.
+1. O `.env` fica em **`backend/`**, que é o `root` do serviço de backend — por isso o arquivo foi movido para lá.
+   Um `.env` na raiz do repositório ficaria fora do serviço e não seria empacotado.
+2. [`backend/src/config.js`](backend/src/config.js) procura o `.env` em `backend/`, na raiz do projeto e no `cwd`,
+   carregando o primeiro que existir.
 
 **Precedência:** variáveis cadastradas em *Settings → Environment Variables* **sempre vencem** o arquivo — o
-`dotenv` não sobrescreve o que já está em `process.env`. Ou seja, o `.env` é o padrão e o painel é o override,
-útil para trocar um valor sem novo commit.
+`dotenv` não sobrescreve o que já está em `process.env`. O `.env` é o padrão; o painel é o override.
 
-No boot, o log diz de onde as variáveis vieram:
+O log de boot diz de onde as variáveis vieram (sem imprimir valores):
 
 ```
 [...] .env carregado de: /var/task/.env
 ```
 
+> Se o `.env` não chegar ao bundle na sua conta, o sintoma é o boot falhar com
+> `Variavel de ambiente obrigatoria ausente: SUPABASE_URL`. Nesse caso, cadastre as variáveis em
+> *Settings → Environment Variables* — o código funciona igual nos dois modos.
+
 > Lembre que o `.env` versionado carrega a `service_role` key. Isso só é aceitável com o repositório **privado**.
 > Se ele for exposto algum dia, resete a chave no Supabase e mova as variáveis para o painel da Vercel.
-
-**Por que `FORWARD_TIMEOUT_MS=6000` e `FORWARD_MAX_RETRIES=1`:** o reenvio é síncrono, e o pior caso é
-`(retries + 1) × timeout + backoff`. Com os padrões (10s / 2 retries) isso chega a **32s**, o que estoura o
-limite de execução da function e faz a Axxon receber um `504` em vez do status real do destino.
-Com `6000` / `1` o pior caso cai para ~12,5s, dentro do `maxDuration: 60` declarado no `vercel.json`
-(se o seu plano recusar esse valor, baixe o `maxDuration` e reduza o timeout na mesma proporção).
-
-> Se o volume de webhooks crescer, prefira a **Opção A (VPS)**: um processo sempre ligado não tem limite de
-> execução nem cold start, e o cold start da function pode adicionar 1–2s ao tempo de resposta que a Axxon enxerga.
-
 
 ### Checklist pós-deploy
 

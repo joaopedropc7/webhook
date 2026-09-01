@@ -4,12 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-// Onde procurar o .env, em ordem. Cobre o dev local, a VPS e o bundle da
-// serverless function da Vercel (onde o cwd e a raiz sao /var/task).
+// Onde procurar o .env, em ordem de precedencia.
+// O local canonico e backend/.env: na Vercel o backend e um service com
+// root "backend", entao o arquivo precisa estar dentro dessa pasta para ser
+// empacotado junto do codigo.
 const ENV_CANDIDATES = [
-  path.resolve(__dirname, '../../.env'), // raiz do projeto
-  path.resolve(__dirname, '../.env'),    // backend/.env
-  path.resolve(process.cwd(), '.env'),   // cwd (Vercel: /var/task)
+  path.resolve(__dirname, '../.env'),    // backend/.env (canonico)
+  path.resolve(__dirname, '../../.env'), // raiz do projeto (compatibilidade)
+  path.resolve(process.cwd(), '.env'),   // cwd do processo
 ];
 
 // dotenv NAO sobrescreve o que ja existe em process.env: as variaveis
