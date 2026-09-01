@@ -5,7 +5,7 @@ const fs = require('fs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 
-require('./config'); // valida as variaveis de ambiente no boot
+const config = require('./config');
 const log = require('./lib/log');
 const webhookRoutes = require('./routes/webhook');
 const authRoutes = require('./routes/auth');
@@ -21,17 +21,40 @@ app.disable('x-powered-by');
 
 app.use(cookieParser());
 
+// Config incompleta: responde 503 dizendo exatamente o que falta, em vez de
+// deixar cada rota estourar um 500 sem explicacao.
+app.use((req, res, next) => {
+  if (!config.missingEnv.length) return next();
+  if (req.path.startsWith('/api') || req.path.startsWith('/webhook')) {
+    return res.status(503).json({
+      error: `Configuracao ausente no servidor: ${config.missingEnv.join(', ')}`,
+    });
+  }
+  return next();
+});
+
 // Healthcheck (publico)
 app.get('/', (req, res, next) => {
   // Em producao a raiz serve o painel React; o healthcheck responde
   // JSON quando o cliente pede JSON ou quando nao ha build do frontend.
   const wantsJson = (req.headers.accept || '').includes('application/json');
   if (wantsJson || !fs.existsSync(path.join(__dirname, '../../frontend/dist/index.html'))) {
-    return res.status(200).json({ ok: true });
+    return health(req, res);
   }
   return next();
 });
-app.get('/health', (req, res) => res.status(200).json({ ok: true }));
+
+// Healthcheck: 503 + nomes (nunca valores) das variaveis que faltam
+function health(req, res) {
+  if (config.missingEnv.length) {
+    return res.status(503).json({ ok: false, missingEnv: config.missingEnv });
+  }
+  if (config.warnings.length) {
+    return res.status(200).json({ ok: true, warnings: config.warnings });
+  }
+  return res.status(200).json({ ok: true });
+}
+app.get('/health', health);
 
 // Webhook publico (parser proprio dentro da rota, para capturar o corpo cru)
 app.use('/webhook', webhookRoutes);
@@ -56,7 +79,7 @@ if (fs.existsSync(distDir)) {
 }
 
 // Cria o usuario padrao se a tabela users estiver vazia (uma vez por processo)
-ensureDefaultAdmin();
+if (!config.missingEnv.length) ensureDefaultAdmin();
 
 // Handler de erro final: nunca derruba o processo
 app.use((err, req, res, _next) => {

@@ -11,7 +11,8 @@
     "build": "npm install --prefix frontend && npm run build --prefix frontend",
     "start": "npm start --prefix backend",
     "create-admin": "npm run create-admin --prefix backend",
-    "hash": "npm run hash --prefix backend"
+    "hash": "npm run hash --prefix backend",
+    "check": "npm run check --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

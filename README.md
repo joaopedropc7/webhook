@@ -362,8 +362,8 @@ O log de boot diz de onde as variáveis vieram (sem imprimir valores):
 [...] .env carregado de: /var/task/.env
 ```
 
-> Se o `.env` não chegar ao bundle na sua conta, o sintoma é o boot falhar com
-> `Variavel de ambiente obrigatoria ausente: SUPABASE_URL`. Nesse caso, cadastre as variáveis em
+> Se o `.env` não chegar ao bundle na sua conta, as rotas `/api` e `/webhook` respondem **503** com a lista
+> das variáveis que faltam (e `GET /health` mostra o mesmo). Nesse caso, cadastre as variáveis em
 > *Settings → Environment Variables* — o código funciona igual nos dois modos.
 
 > Lembre que o `.env` versionado carrega a `service_role` key. Isso só é aceitável com o repositório **privado**.
@@ -402,7 +402,26 @@ O app aborta no boot com mensagem clara se faltar alguma variável obrigatória.
 
 ---
 
-## 7. Notas de segurança
+## 7. Diagnóstico
+
+`GET /health` é o primeiro lugar a olhar:
+
+| Resposta | Significado |
+|----------|-------------|
+| `{"ok":true}` | tudo certo |
+| `{"ok":false,"missingEnv":[...]}` (503) | faltam variáveis de ambiente — as citadas na lista |
+| `{"ok":true,"warnings":[...]}` | sobe, mas com problema de configuração (ex.: chave `anon` no lugar da `service_role`) |
+
+Erros comuns:
+
+- **`/api/*` responde 500 em tudo, inclusive `/api/auth/me` sem cookie** → o processo não subiu.
+  Em serverless, quase sempre é variável de ambiente faltando; veja os logs da function.
+- **Login sempre "Usuario ou senha invalidos", mesmo com a senha certa** → o backend está usando a chave
+  `anon` em vez da `service_role`. Com RLS ligado, a consulta em `users` volta vazia em vez de dar erro.
+  O boot avisa: `[config] ATENCAO: SUPABASE_SERVICE_ROLE_KEY contem a chave "anon"`.
+- **Webhooks chegam mas não aparecem no painel** → mesma causa: sem a `service_role`, o insert é barrado pelo RLS.
+
+## 8. Notas de segurança
 
 - O usuário padrão `admin`/`password` existe para o primeiro acesso: trocar a senha é o primeiro passo em produção.
 - A `service_role key` fica apenas no backend; o bundle do frontend não contém nenhuma credencial do Supabase.

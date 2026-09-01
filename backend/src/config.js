@@ -28,11 +28,16 @@ for (const candidate of ENV_CANDIDATES) {
   }
 }
 
+// Variaveis obrigatorias que nao foram encontradas.
+// Nao derrubamos o processo: num ambiente serverless, morrer no boot vira um
+// 500 opaco. Guardamos a lista e o app responde 503 dizendo o que falta.
+const missingEnv = [];
+
 function required(name) {
   const value = process.env[name];
   if (!value) {
-    console.error(`[config] Variavel de ambiente obrigatoria ausente: ${name}`);
-    process.exit(1);
+    missingEnv.push(name);
+    return '';
   }
   return value;
 }
@@ -67,6 +72,41 @@ const config = {
   },
 };
 
+// A chave do Supabase e um JWT com a claim "role". Trocar a service_role pela
+// anon e um erro silencioso: com RLS ligado, as consultas voltam vazias em vez
+// de dar erro, e o painel parece "sem dados" ou recusa o login sem explicacao.
+function supabaseKeyRole(key) {
+  try {
+    const payload = JSON.parse(Buffer.from(String(key).split('.')[1], 'base64').toString('utf8'));
+    return typeof payload.role === 'string' ? payload.role : null;
+  } catch {
+    return null; // formato novo (sb_secret_...) ou chave invalida: nao da para saber
+  }
+}
+
+const keyRole = config.supabaseServiceRoleKey ? supabaseKeyRole(config.supabaseServiceRoleKey) : null;
+const warnings = [];
+if (keyRole && keyRole !== 'service_role') {
+  warnings.push(
+    `SUPABASE_SERVICE_ROLE_KEY contem a chave "${keyRole}", nao a service_role. ` +
+      'Pegue a chave service_role em Project Settings -> API.'
+  );
+}
+
 config.loadedEnvFiles = loadedEnvFiles;
+config.missingEnv = missingEnv;
+config.supabaseKeyRole = keyRole;
+config.warnings = warnings;
+
+for (const warning of warnings) console.error(`[config] ATENCAO: ${warning}`);
+
+if (missingEnv.length) {
+  console.error(
+    `[config] Variaveis de ambiente obrigatorias ausentes: ${missingEnv.join(', ')}. ` +
+      (loadedEnvFiles.length
+        ? `.env lido de: ${loadedEnvFiles.join(', ')}`
+        : 'Nenhum arquivo .env encontrado — cadastre as variaveis no painel do provedor.')
+  );
+}
 
 module.exports = config;

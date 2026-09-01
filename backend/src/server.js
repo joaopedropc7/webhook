@@ -11,6 +11,12 @@ const server = app.listen(config.port, () => {
       ? `.env carregado de: ${config.loadedEnvFiles.join(', ')}`
       : '.env nao encontrado — usando apenas as variaveis do ambiente'
   );
+  if (config.missingEnv.length) {
+    log.error(
+      `CONFIGURACAO INCOMPLETA — faltam: ${config.missingEnv.join(', ')}. ` +
+        'As rotas /api e /webhook vao responder 503 ate isso ser resolvido.'
+    );
+  }
   log.info(`Reencaminhando para: ${config.destUrl}`);
   log.info(`Endpoint do webhook: POST /webhook/axxon`);
 });
