@@ -24,7 +24,19 @@
   },
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/webhook/axxon",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/webhook",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/webhook/:path*",
       "destination": {
         "service": "backend"
       }
@@ -37,6 +49,18 @@
     },
     {
       "source": "/health",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/api/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/api/(.*)",
       "destination": {
         "service": "backend"
       }

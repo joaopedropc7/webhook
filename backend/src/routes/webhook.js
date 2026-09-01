@@ -101,6 +101,19 @@ function toJsonb(value) {
   return { _raw: value };
 }
 
+// Sonda de roteamento: um GET aqui responde JSON, provando que a requisicao
+// chegou ao backend. Se voltar HTML, quem respondeu foi o frontend e o
+// postback da Axxon (POST) se perderia. Nao tem efeito colateral nenhum.
+router.get('/axxon', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    endpoint: '/webhook/axxon',
+    method: 'POST',
+    gateway: 'axxon',
+    forwardsTo: config.destUrl,
+  });
+});
+
 router.post('/axxon', jsonParserSafe, async (req, res) => {
   let logId = null;
 
