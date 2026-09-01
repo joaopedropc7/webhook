@@ -45,14 +45,23 @@ app.get('/', (req, res, next) => {
 });
 
 // Healthcheck: 503 + nomes (nunca valores) das variaveis que faltam
+// Identifica o build que esta respondendo: distingue "codigo novo com problema"
+// de "deploy antigo ainda no ar".
+const BUILD_INFO = {
+  envSources: {
+    baked: config.bakedEnvLoaded,        // env.baked.js entrou no bundle?
+    files: config.loadedEnvFiles.length, // quantos .env foram lidos
+  },
+};
+
 function health(req, res) {
   if (config.missingEnv.length) {
-    return res.status(503).json({ ok: false, missingEnv: config.missingEnv });
+    return res.status(503).json({ ok: false, missingEnv: config.missingEnv, ...BUILD_INFO });
   }
   if (config.warnings.length) {
-    return res.status(200).json({ ok: true, warnings: config.warnings });
+    return res.status(200).json({ ok: true, warnings: config.warnings, ...BUILD_INFO });
   }
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ ok: true, ...BUILD_INFO });
 }
 app.get('/health', health);
 

@@ -54,4 +54,13 @@ module.exports = ${JSON.stringify(values, null, 2)};
   console.log(`[bake-env] ignoradas (definidas pela plataforma): ${[...SKIP].join(', ')}`);
 }
 
-main();
+// Este script roda no build da Vercel. Se ele falhar, o build inteiro falha e o
+// dominio continua servindo o deploy anterior — um modo de falha bem confuso.
+// Entao: qualquer erro vira aviso, e o processo sempre sai com 0.
+try {
+  main();
+} catch (err) {
+  console.error('[bake-env] AVISO: nao foi possivel gerar o modulo:', err && err.message);
+  console.error('[bake-env] seguindo o build — as variaveis podem vir do painel.');
+  process.exit(0);
+}
