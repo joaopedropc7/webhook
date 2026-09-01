@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "create-admin": "node scripts/create-admin.js",
     "hash": "node scripts/hash-password.js",
-    "check": "node scripts/check-config.js"
+    "check": "node scripts/check-config.js",
+    "bake-env": "node scripts/bake-env.js",
+    "build": "node scripts/bake-env.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -35,6 +35,29 @@ async function main() {
   }
   ok('todas as variaveis obrigatorias estao presentes');
 
+  // --- modulo embutido (usado no deploy da Vercel) ---
+  const fs = require('fs');
+  const path = require('path');
+  const dotenv = require('dotenv');
+  const bakedPath = path.join(__dirname, '../src/env.baked.js');
+
+  if (!fs.existsSync(bakedPath)) {
+    console.log('  aviso  src/env.baked.js nao existe — rode "npm run bake-env" antes do deploy na Vercel');
+  } else {
+    const baked = require(bakedPath);
+    const envFile = dotenv.parse(fs.readFileSync(path.join(__dirname, '../.env'), 'utf8'));
+    const skip = new Set(['PORT', 'NODE_ENV', 'VERCEL']);
+    const stale = Object.entries(envFile)
+      .filter(([k, v]) => !skip.has(k) && baked[k] !== v)
+      .map(([k]) => k);
+
+    if (stale.length) {
+      bad(`src/env.baked.js desatualizado (${stale.join(', ')})`, 'rode: npm run bake-env');
+    } else {
+      ok('src/env.baked.js em dia com o .env');
+    }
+  }
+
   // --- chave do Supabase ---
   if (config.supabaseKeyRole === 'service_role') {
     ok('SUPABASE_SERVICE_ROLE_KEY e mesmo a service_role');

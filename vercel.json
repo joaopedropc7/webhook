@@ -18,7 +18,8 @@
           "maxDuration": 60,
           "includeFiles": ".env"
         }
-      }
+      },
+      "buildCommand": "npm run bake-env"
     }
   },
   "rewrites": [

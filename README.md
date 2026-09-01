@@ -39,6 +39,7 @@ A `service_role key` existe **somente no backend**. O frontend nunca fala com o 
 .
 ├── backend/
 │   ├── src/
+│   │   ├── env.baked.js         # gerado do .env (npm run bake-env), vai no bundle
 │   │   ├── server.js            # bootstrap + shutdown gracioso
 │   │   ├── app.js               # rotas, estáticos do React, handler de erro
 │   │   ├── config.js            # .env
@@ -342,7 +343,25 @@ O reenvio é síncrono, e o pior caso é `(retries + 1) × timeout + backoff`. C
 isso chega a **32s**, o que estoura o `maxDuration` e faz a Axxon receber um `504` em vez do status real do
 destino. Com `6000` / `1` o pior caso cai para ~12,5s.
 
-#### Como o `.env` é lido na Vercel
+#### Como as variáveis chegam à Vercel
+
+O file tracing da Vercel monta o bundle da function a partir do grafo de `require()`. Um `.env` solto **não
+está nesse grafo** e acaba ficando de fora — o sintoma é `{"ok":false,"missingEnv":[...]}` em `/health`.
+Por isso os valores também são embutidos num módulo JavaScript, que o tracing sempre inclui:
+
+```bash
+npm run bake-env    # backend/.env  ->  backend/src/env.baked.js
+```
+
+O `backend/.env` continua sendo a **fonte de verdade**: o módulo é derivado dele, e o `buildCommand` do
+serviço de backend o regenera a cada deploy. `npm run check` avisa se ele estiver desatualizado.
+`PORT` e `NODE_ENV` ficam de fora de propósito — quem define esses é a plataforma.
+
+Precedência: **painel da Vercel** > `backend/.env` > `env.baked.js`.
+
+> `env.baked.js` contém credenciais, assim como o `.env`. Vale a mesma regra: repositório privado.
+
+#### Detalhes da leitura do `.env`
 
 A Vercel **não** injeta sozinha um `.env` do repositório nas variáveis de runtime — o que acontece em projetos
 Vite/Next é o bundler ler o `.env` em *build time* e embutir os valores no bundle, o que é outra coisa.

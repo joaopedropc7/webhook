@@ -5,6 +5,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 
 const loadedEnvFiles = [];
+let bakedEnvLoaded = false;
 
 // Aplica um .env sem sobrescrever o que ja existe: as variaveis cadastradas
 // no painel da Vercel/Render sempre vencem o arquivo.
@@ -24,6 +25,20 @@ try {
   applyEnvFile(fs.readFileSync(path.join(__dirname, '../.env'), 'utf8'), path.join(__dirname, '../.env'));
 } catch {
   // sem backend/.env: tenta os outros locais
+}
+
+// Ultimo recurso: valores embutidos em um modulo .js (npm run bake-env).
+// Um `require` estatico SEMPRE entra no bundle da function — e por isso que
+// isto funciona na Vercel onde o .env solto nao chega.
+try {
+  // eslint-disable-next-line global-require
+  const baked = require('./env.baked');
+  for (const [key, value] of Object.entries(baked)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+  bakedEnvLoaded = true;
+} catch {
+  // sem env.baked.js: normal em dev, onde o .env ja resolveu
 }
 
 // Outros locais aceitos (dev local fora do padrao, VPS, cwd do processo)
@@ -108,6 +123,7 @@ if (keyRole && keyRole !== 'service_role') {
 }
 
 config.loadedEnvFiles = loadedEnvFiles;
+config.bakedEnvLoaded = bakedEnvLoaded;
 config.missingEnv = missingEnv;
 config.supabaseKeyRole = keyRole;
 config.warnings = warnings;
