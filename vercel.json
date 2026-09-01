@@ -14,7 +14,7 @@
       "entrypoint": "src/server.js",
       "installCommand": "npm install",
       "functions": {
-        "src/server.js": {
+        "src/**": {
           "maxDuration": 60,
           "includeFiles": ".env"
         }
@@ -22,9 +22,29 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": { "service": "backend" } },
-    { "source": "/webhook/(.*)", "destination": { "service": "backend" } },
-    { "source": "/health", "destination": { "service": "backend" } },
-    { "source": "/(.*)", "destination": { "service": "frontend" } }
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/webhook/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/health",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
+    }
   ]
 }

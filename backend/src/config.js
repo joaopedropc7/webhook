@@ -4,25 +4,39 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-// Onde procurar o .env, em ordem de precedencia.
-// O local canonico e backend/.env: na Vercel o backend e um service com
-// root "backend", entao o arquivo precisa estar dentro dessa pasta para ser
-// empacotado junto do codigo.
+const loadedEnvFiles = [];
+
+// Aplica um .env sem sobrescrever o que ja existe: as variaveis cadastradas
+// no painel da Vercel/Render sempre vencem o arquivo.
+function applyEnvFile(contents, source) {
+  const parsed = dotenv.parse(contents);
+  for (const [key, value] of Object.entries(parsed)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+  loadedEnvFiles.push(source);
+}
+
+// backend/.env, com caminho LITERAL. O caminho literal e proposital: e assim
+// que o file tracing da Vercel (@vercel/nft) reconhece o arquivo como um asset
+// da function e o empacota junto do codigo. Com o caminho montado
+// dinamicamente (o loop abaixo), o tracing nao enxerga nada para incluir.
+try {
+  applyEnvFile(fs.readFileSync(path.join(__dirname, '../.env'), 'utf8'), path.join(__dirname, '../.env'));
+} catch {
+  // sem backend/.env: tenta os outros locais
+}
+
+// Outros locais aceitos (dev local fora do padrao, VPS, cwd do processo)
 const ENV_CANDIDATES = [
-  path.resolve(__dirname, '../.env'),    // backend/.env (canonico)
-  path.resolve(__dirname, '../../.env'), // raiz do projeto (compatibilidade)
+  path.resolve(__dirname, '../../.env'), // raiz do projeto
   path.resolve(process.cwd(), '.env'),   // cwd do processo
 ];
 
-// dotenv NAO sobrescreve o que ja existe em process.env: as variaveis
-// cadastradas no painel da Vercel/Render sempre vencem o arquivo.
-const loadedEnvFiles = [];
 for (const candidate of ENV_CANDIDATES) {
   if (loadedEnvFiles.includes(candidate)) continue;
   try {
     if (!fs.existsSync(candidate)) continue;
-    const result = dotenv.config({ path: candidate });
-    if (!result.error) loadedEnvFiles.push(candidate);
+    applyEnvFile(fs.readFileSync(candidate, 'utf8'), candidate);
   } catch {
     // .env ilegivel nao pode derrubar o boot: as vars do painel podem bastar
   }
