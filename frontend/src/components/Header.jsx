@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
 
 export default function Header() {
@@ -10,8 +11,11 @@ export default function Header() {
           Webhooks Axxon
           <span className="badge text-bg-secondary ms-2 fw-normal">proxy</span>
         </span>
-        <div className="d-flex align-items-center gap-3 ms-auto">
+        <div className="d-flex align-items-center gap-2 gap-sm-3 ms-auto">
           <span className="text-white-50 small d-none d-sm-inline">{user?.email}</span>
+          <Link to="/configuracoes" className="btn btn-outline-light btn-sm">
+            Configuracoes
+          </Link>
           <button type="button" className="btn btn-outline-light btn-sm" onClick={logout}>
             Sair
           </button>

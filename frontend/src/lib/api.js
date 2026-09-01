@@ -40,4 +40,16 @@ export const api = {
   },
 
   log: (id) => request(`/api/logs/${id}`),
+
+  changePassword: (currentPassword, newPassword) =>
+    request('/api/settings/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  changeAccount: (email, currentPassword) =>
+    request('/api/settings/account', {
+      method: 'PATCH',
+      body: JSON.stringify({ email, currentPassword }),
+    }),
 };

@@ -6,6 +6,11 @@ const log = require('./lib/log');
 
 const server = app.listen(config.port, () => {
   log.info(`Axxon webhook proxy ouvindo na porta ${config.port} (${config.nodeEnv})`);
+  log.info(
+    config.loadedEnvFiles.length
+      ? `.env carregado de: ${config.loadedEnvFiles.join(', ')}`
+      : '.env nao encontrado — usando apenas as variaveis do ambiente'
+  );
   log.info(`Reencaminhando para: ${config.destUrl}`);
   log.info(`Endpoint do webhook: POST /webhook/axxon`);
 });

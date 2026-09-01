@@ -3,6 +3,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const supabase = require('../lib/supabase');
+const config = require('../config');
 const log = require('../lib/log');
 const {
   requireAuth,
@@ -19,7 +20,7 @@ router.post('/login', async (req, res) => {
     const password = String(req.body?.password || '');
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Informe email e senha' });
+      return res.status(400).json({ error: 'Informe usuario e senha' });
     }
 
     const { data: user, error } = await supabase
@@ -35,10 +36,14 @@ router.post('/login', async (req, res) => {
 
     // Mesma mensagem para usuario inexistente e senha errada
     const ok = user ? await bcrypt.compare(password, user.password_hash) : false;
-    if (!ok) return res.status(401).json({ error: 'Email ou senha invalidos' });
+    if (!ok) return res.status(401).json({ error: 'Usuario ou senha invalidos' });
 
-    setSessionCookie(res, signSession(user));
-    return res.json({ user: { id: user.id, email: user.email } });
+    // Ainda usando a senha padrao? O painel mostra um aviso ate ser trocada.
+    const passwordIsDefault =
+      config.defaultAdmin.enabled && password === config.defaultAdmin.password;
+
+    setSessionCookie(res, signSession(user, { passwordIsDefault }));
+    return res.json({ user: { id: user.id, email: user.email, passwordIsDefault } });
   } catch (err) {
     log.error('[auth] excecao no login:', err.message);
     return res.status(500).json({ error: 'Erro interno' });

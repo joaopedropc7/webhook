@@ -26,9 +26,10 @@ function ask(question) {
 }
 
 async function main() {
+  // Aceita um email ou um usuario simples (o padrao da plataforma e "admin")
   const email = String(process.argv[2] || '').trim().toLowerCase();
-  if (!email || !email.includes('@')) {
-    console.error("Uso: node scripts/create-admin.js <email> ['senha']");
+  if (email.length < 3 || /\s/.test(email)) {
+    console.error("Uso: node scripts/create-admin.js <usuario-ou-email> ['senha']");
     process.exit(1);
   }
 

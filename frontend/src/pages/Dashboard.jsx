@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import Pagination from '../components/Pagination.jsx';
 import LogDetailModal from '../components/LogDetailModal.jsx';
+import DefaultPasswordAlert from '../components/DefaultPasswordAlert.jsx';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/format';
 
@@ -79,6 +80,8 @@ export default function Dashboard() {
       <Header />
 
       <main className="container-fluid px-3 px-lg-4 py-4">
+        <DefaultPasswordAlert />
+
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
           <div>
             <h1 className="h5 fw-semibold mb-1">Webhooks recebidos</h1>

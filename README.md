@@ -43,16 +43,21 @@ A `service_role key` existe **somente no backend**. O frontend nunca fala com o 
 │   │   ├── app.js               # rotas, estáticos do React, handler de erro
 │   │   ├── config.js            # .env
 │   │   ├── lib/supabase.js      # client com service_role key
+│   │   ├── lib/seed.js          # cria o usuário padrão no primeiro boot
 │   │   ├── middleware/auth.js   # JWT em cookie httpOnly
 │   │   └── routes/
 │   │       ├── webhook.js       # POST /webhook/axxon  (público)
 │   │       ├── auth.js          # login / logout / me
-│   │       └── logs.js          # listagem + detalhe (protegidas)
+│   │       ├── logs.js          # listagem + detalhe (protegidas)
+│   │       └── settings.js      # troca de senha e de usuário
 │   └── scripts/
 │       ├── create-admin.js      # cria o admin (hash bcrypt)
 │       └── hash-password.js     # só gera o hash, para colar no SQL Editor
-├── frontend/                    # React + Vite (build vai para frontend/dist)
+├── frontend/                    # React + Vite (login, painel, configurações)
+├── api/index.js                 # entrypoint serverless da Vercel (mesmo app Express)
 ├── migrations/001_init.sql      # schema do Supabase
+├── vercel.json                  # build + rewrites da Vercel
+├── ecosystem.config.js          # pm2
 ├── .env.example
 └── package.json                 # scripts do monorepo
 ```
@@ -95,10 +100,30 @@ DEST_URL=https://apipix-delta.vercel.app/api/webhook/axxon
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 JWT_SECRET=<cole aqui a saída de: openssl rand -hex 32>
-COOKIE_SECURE=false     # true em produção (HTTPS)
+COOKIE_SECURE=          # vazio = automático (true em produção, false em local)
 ```
 
-### 1.5 Criar o primeiro admin
+### 1.5 Usuário padrão
+
+No primeiro boot, **se a tabela `users` estiver vazia**, a aplicação cria sozinha o usuário padrão:
+
+| Usuário | Senha |
+|---------|-------|
+| `admin` | `password` |
+
+> ⚠️ Troque a senha no primeiro acesso, em **Configurações**. Enquanto ela for a padrão, o painel exibe um aviso.
+> Este endpoint fica exposto na internet, e `admin`/`password` é a primeira combinação que scanners automatizados testam.
+
+O seed só roda com a tabela vazia: ele **nunca** sobrescreve credenciais reais nem recria um usuário que você apagou.
+Para mudar os valores padrão ou desligar o seed, use no `.env`:
+
+```env
+DEFAULT_ADMIN_USER=admin
+DEFAULT_ADMIN_PASSWORD=password
+SEED_DEFAULT_ADMIN=false     # desliga a criação automática
+```
+
+#### Criar outros usuários pela linha de comando
 
 A senha **nunca** é gravada em texto puro — só o hash bcrypt (custo 12) vai para o banco.
 
@@ -171,6 +196,10 @@ Tudo dentro de `try/catch`: falha no Supabase ou no destino nunca derruba o proc
 | `GET`  | `/api/auth/me` | usuário logado |
 | `GET`  | `/api/logs` | `?page=1&limit=20&success=true|false&q=texto` → `{ data, page, limit, total, totalPages }`, ordenado por `created_at desc` |
 | `GET`  | `/api/logs/:id` | log completo (recebido + reenviado) |
+| `PATCH` | `/api/settings/password` | `{ currentPassword, newPassword }` → troca a senha (mín. 8 caracteres) |
+| `PATCH` | `/api/settings/account` | `{ email, currentPassword }` → troca o usuário do login |
+
+As duas rotas de `/api/settings` exigem a **senha atual**: só o cookie de sessão não basta para alterar credenciais.
 
 Sem cookie válido, as rotas `/api/logs*` e `/api/auth/me` respondem `401`, e o painel redireciona para `/login`.
 
@@ -185,7 +214,9 @@ Sem cookie válido, as rotas `/api/logs*` e `/api/auth/me` respondem `401`, e o 
 - **Detalhe** (modal) — lado a lado, em blocos `<pre>` com JSON formatado:
   - *Recebido da Axxon*: `received_body`, `received_headers`
   - *Reenviado ao sistema*: `forwarded_url`, `forwarded_status`, `forwarded_response`, `error`
-- Header com o email do usuário logado e botão **Sair**.
+- **`/configuracoes`** (protegida) — alterar a senha e o usuário do login. Ambas as ações pedem a senha atual.
+- Header com o usuário logado, link para **Configurações** e botão **Sair**.
+- Enquanto a senha padrão estiver em uso, um aviso aparece no topo com atalho para a troca.
 
 ---
 
@@ -210,7 +241,7 @@ git clone <seu-repo> /var/www/axxon-proxy
 cd /var/www/axxon-proxy
 
 npm run install:all
-cp .env.example .env && nano .env        # preencha e use COOKIE_SECURE=true
+cp .env.example .env && nano .env        # preencha (COOKIE_SECURE pode ficar vazio)
 npm run build
 
 npm run create-admin -- admin@lojaconfort.site 'SuaSenhaForte123'
@@ -259,16 +290,69 @@ git pull && npm run install:all && npm run build && pm2 restart axxon-webhook-pr
 | Start command | `npm start` |
 | Health check path | `/health` |
 
-Variáveis de ambiente no painel do serviço: `DEST_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `COOKIE_SECURE=true`, `NODE_ENV=production`.
+Variáveis de ambiente no painel do serviço: `DEST_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `NODE_ENV=production` (o `COOKIE_SECURE` se resolve sozinho em produção).
 Não defina `PORT` manualmente — a plataforma injeta a dela.
 
-> Evite plataformas serverless (Vercel Functions, Lambda) para este serviço: o reenvio é síncrono e pode levar até ~12s com as retentativas, o que estoura o limite de execução de vários planos.
+### Opção C — Vercel
+
+O repositório já traz [`vercel.json`](vercel.json) e [`api/index.js`](api/index.js), que é o que resolve o erro
+`vercel.json required to deploy projects with multiple services`: sem esse arquivo a Vercel encontra
+frontend e backend no mesmo repositório e não sabe o que construir.
+
+Como fica: o painel React é publicado como estático (`frontend/dist`) e todas as rotas dinâmicas
+(`/api/*`, `/webhook/*`, `/health`) são reescritas para uma única serverless function que roda **o mesmo app Express**.
+
+Passos:
+
+1. **Import Project** na Vercel apontando para o repositório. Deixe o *Root Directory* como a raiz — o `vercel.json` cuida do resto.
+2. Nada a cadastrar no painel: o `.env` do repositório é lido em runtime (veja abaixo).
+   Ajuste no `.env` antes do deploy:
+
+   ```env
+   FORWARD_TIMEOUT_MS=6000
+   FORWARD_MAX_RETRIES=1
+   ```
+
+3. Deploy, e cadastre `https://<seu-dominio>/webhook/axxon` como `postbackUrl` na Axxon.
+
+#### Como o `.env` é lido na Vercel
+
+A Vercel **não** injeta sozinha um `.env` do repositório nas variáveis de runtime — o que costuma acontecer
+em projetos Vite/Next é o bundler ler o `.env` em *build time* e embutir os valores no bundle, o que é outra coisa.
+Para uma serverless function, são necessários dois passos, ambos já configurados aqui:
+
+1. [`vercel.json`](vercel.json) declara `"includeFiles": ".env"` na function, o que empacota o arquivo junto do código.
+2. [`backend/src/config.js`](backend/src/config.js) procura o `.env` na raiz do projeto, em `backend/` e no `cwd`
+   (que na Vercel é a raiz do bundle), carregando o primeiro que existir.
+
+**Precedência:** variáveis cadastradas em *Settings → Environment Variables* **sempre vencem** o arquivo — o
+`dotenv` não sobrescreve o que já está em `process.env`. Ou seja, o `.env` é o padrão e o painel é o override,
+útil para trocar um valor sem novo commit.
+
+No boot, o log diz de onde as variáveis vieram:
+
+```
+[...] .env carregado de: /var/task/.env
+```
+
+> Lembre que o `.env` versionado carrega a `service_role` key. Isso só é aceitável com o repositório **privado**.
+> Se ele for exposto algum dia, resete a chave no Supabase e mova as variáveis para o painel da Vercel.
+
+**Por que `FORWARD_TIMEOUT_MS=6000` e `FORWARD_MAX_RETRIES=1`:** o reenvio é síncrono, e o pior caso é
+`(retries + 1) × timeout + backoff`. Com os padrões (10s / 2 retries) isso chega a **32s**, o que estoura o
+limite de execução da function e faz a Axxon receber um `504` em vez do status real do destino.
+Com `6000` / `1` o pior caso cai para ~12,5s, dentro do `maxDuration: 60` declarado no `vercel.json`
+(se o seu plano recusar esse valor, baixe o `maxDuration` e reduza o timeout na mesma proporção).
+
+> Se o volume de webhooks crescer, prefira a **Opção A (VPS)**: um processo sempre ligado não tem limite de
+> execução nem cold start, e o cold start da function pode adicionar 1–2s ao tempo de resposta que a Axxon enxerga.
+
 
 ### Checklist pós-deploy
 
 - [ ] `curl https://app.lojaconfort.site/health` → `{"ok":true}`
-- [ ] `COOKIE_SECURE=true` e HTTPS ativo
-- [ ] Login funciona e o painel abre
+- [ ] HTTPS ativo e cookie saindo com `Secure` (log de boot + DevTools → Application → Cookies)
+- [ ] Login com `admin` / `password` funciona **e a senha foi trocada em Configurações**
 - [ ] `POST` de teste em `/webhook/axxon` aparece no painel com badge verde
 - [ ] **`https://app.lojaconfort.site/webhook/axxon` cadastrado como `postbackUrl` na Axxon Pay**
 
@@ -285,8 +369,13 @@ Não defina `PORT` manualmente — a plataforma injeta a dela.
 | `JWT_SECRET` | — | **obrigatório**, `openssl rand -hex 32` |
 | `JWT_EXPIRES_IN` | `12h` | validade da sessão |
 | `COOKIE_NAME` | `axxon_session` | nome do cookie |
-| `COOKIE_SECURE` | `false` | `true` em produção (HTTPS) |
+| `COOKIE_SECURE` | *(vazio = automático)* | vazio: `true` em produção/Vercel, `false` em local. Preencha só para forçar |
 | `NODE_ENV` | `development` | |
+| `SEED_DEFAULT_ADMIN` | `true` | cria o usuário padrão quando `users` está vazia |
+| `DEFAULT_ADMIN_USER` | `admin` | usuário padrão |
+| `DEFAULT_ADMIN_PASSWORD` | `password` | senha padrão |
+| `FORWARD_TIMEOUT_MS` | `10000` | timeout de cada tentativa de reenvio |
+| `FORWARD_MAX_RETRIES` | `2` | retentativas em erro de rede (0 desliga) |
 
 O app aborta no boot com mensagem clara se faltar alguma variável obrigatória.
 
@@ -294,8 +383,9 @@ O app aborta no boot com mensagem clara se faltar alguma variável obrigatória.
 
 ## 7. Notas de segurança
 
+- O usuário padrão `admin`/`password` existe para o primeiro acesso: trocar a senha é o primeiro passo em produção.
 - A `service_role key` fica apenas no backend; o bundle do frontend não contém nenhuma credencial do Supabase.
-- Cookie de sessão `httpOnly` + `SameSite=Lax` (e `Secure` quando `COOKIE_SECURE=true`).
+- Cookie de sessão `httpOnly` + `SameSite=Lax`, com `Secure` automático em produção/Vercel.
 - Login responde a mesma mensagem para email inexistente e senha errada.
 - `authorization` e `cookie` dos headers recebidos são gravados como `[REDACTED]`.
 - `webhook_logs` guarda o payload da Axxon como veio — trate o banco como dado sensível e restrinja quem tem acesso ao projeto Supabase.

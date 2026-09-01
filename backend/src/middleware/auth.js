@@ -3,9 +3,11 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 
-function signSession(user) {
+// passwordIsDefault vai no proprio token: assim o /me nao paga um bcrypt
+// a cada carregamento do painel so para saber se deve mostrar o aviso.
+function signSession(user, { passwordIsDefault = false } = {}) {
   return jwt.sign(
-    { sub: user.id, email: user.email },
+    { sub: user.id, email: user.email, pwd_default: passwordIsDefault },
     config.jwtSecret,
     { expiresIn: config.jwtExpiresIn }
   );
@@ -37,7 +39,11 @@ function requireAuth(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Nao autenticado' });
 
     const payload = jwt.verify(token, config.jwtSecret);
-    req.user = { id: payload.sub, email: payload.email };
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      passwordIsDefault: Boolean(payload.pwd_default),
+    };
     return next();
   } catch (err) {
     return res.status(401).json({ error: 'Sessao invalida ou expirada' });

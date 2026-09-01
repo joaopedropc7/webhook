@@ -43,11 +43,12 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} noValidate>
             <div className="mb-3">
-              <label htmlFor="email" className="form-label small fw-medium">Email</label>
+              <label htmlFor="email" className="form-label small fw-medium">Usuario</label>
               <input
                 id="email"
-                type="email"
+                type="text"
                 className="form-control"
+                placeholder="admin"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"

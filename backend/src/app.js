@@ -10,6 +10,8 @@ const log = require('./lib/log');
 const webhookRoutes = require('./routes/webhook');
 const authRoutes = require('./routes/auth');
 const logsRoutes = require('./routes/logs');
+const settingsRoutes = require('./routes/settings');
+const { ensureDefaultAdmin } = require('./lib/seed');
 
 const app = express();
 
@@ -38,6 +40,7 @@ app.use('/webhook', webhookRoutes);
 app.use('/api', express.json({ limit: '1mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Rota nao encontrada' }));
 
@@ -51,6 +54,9 @@ if (fs.existsSync(distDir)) {
 } else {
   log.warn('[app] frontend/dist nao encontrado — rode "npm run build" para servir o painel');
 }
+
+// Cria o usuario padrao se a tabela users estiver vazia (uma vez por processo)
+ensureDefaultAdmin();
 
 // Handler de erro final: nunca derruba o processo
 app.use((err, req, res, _next) => {
